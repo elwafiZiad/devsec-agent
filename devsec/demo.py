@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+from .schedules import Schedules, account_id
 from .config import settings
 from .database import utcnow
 
@@ -24,6 +25,7 @@ class Credentials(BaseModel):
 def create_demo(config=None):
     config = config or settings()
     app = FastAPI(title="Application de laboratoire", docs_url=None, redoc_url=None)
+    schedules = Schedules(config)
     lock = threading.Lock()
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
     app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
@@ -68,15 +70,29 @@ def create_demo(config=None):
         if request.headers.get("origin") != config["demo_url"]:
             raise HTTPException(403, "Origine non autorisée")
         success = hmac.compare_digest(data.username.encode(), b"etudiant") and hmac.compare_digest(data.password.encode(), b"demo-lab")
+        return log_auth(request, data.username, success, utcnow())
+
+    def log_auth(request, username, success, event_time):
         event_id = str(uuid.uuid4())
         event = {"schema_version": "1.0", "event_id": event_id, "source": "demo-auth", "event_type": "auth.success" if success else "auth.failure",
-                 "event_time": utcnow(), "service": "demo-app", "environment": "lab", "source_ip": request.client.host,
-                 "user_id": "usr-" + hmac.new(bytes.fromhex(config["pseudonym_key"]), data.username.encode(), hashlib.sha256).hexdigest()[:24],
+                 "event_time": event_time, "service": "demo-app", "environment": "lab", "source_ip": request.client.host,
+                 "user_id": account_id(config, username),
                  "session_id": None, "request_id": request.state.request_id, "outcome": "success" if success else "failure", "synthetic": True,
                  "raw_redacted": "authentication succeeded" if success else "authentication failed"}
         write_event(event)
         # This is a deliberate login simulator, not a session for protected resources.
         return {"success": success, "event_id": event_id, "message": "Connexion de test acceptée." if success else "Connexion de test refusée."}
+
+    @app.post("/simulation/horaire")
+    def simulate_schedule(request: Request, account: Literal["etudiant", "technicien", "stagiaire", "visiteur"]):
+        if request.headers.get("origin") != config["demo_url"]:
+            raise HTTPException(403, "Origine non autorisée")
+        now = datetime.now(schedules.zone)
+        tuesday = now - timedelta(days=(now.weekday() - 1) % 7)
+        stamp = tuesday.replace(hour=23, minute=0, second=0, microsecond=0)
+        if stamp > now:
+            stamp -= timedelta(days=7)
+        return log_auth(request, account, True, stamp.astimezone(timezone.utc).isoformat())
 
     @app.post("/simulation/privileges")
     def simulate_privileges(request: Request, scenario: Literal["authorized", "outside", "denied"] = "outside"):

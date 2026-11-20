@@ -21,6 +21,8 @@ HERE = Path(__file__).parent
 
 def create_app(config=None):
     config = config or settings()
+    from .schedules import Schedules
+    schedules = Schedules(config)
     engine, sessions = database(config["database_url"])
     app = FastAPI(title="Agent DevSec — collecte", docs_url=None, redoc_url=None)
     app.state.engine, app.state.sessions = engine, sessions
@@ -119,6 +121,12 @@ def create_app(config=None):
             return RedirectResponse("/login", status_code=303)
         return templates.TemplateResponse(request=request, name="dashboard.html", context={"demo_url": config["demo_url"]})
 
+    def event_detail(row):
+        payload = json.loads(row.payload)
+        if row.event_type == "auth.success":
+            payload["schedule"] = schedules.assess(payload)
+        return payload
+
     @app.get("/events", dependencies=[Depends(viewer)])
     def events(event_type: str = "", before: int | None = None, source_ip: IPvAnyAddress | None = None):
         if event_type not in ("", "auth.failure", "auth.success", "http.access", "audit.task_granted", "audit.task_action", "audit.role_change", "audit.sensitive_action"):
@@ -133,7 +141,7 @@ def create_app(config=None):
             if before is not None:
                 query = query.where(Event.id < before)
             rows = db.scalars(query.order_by(Event.id.desc()).limit(51)).all()
-            return {"items": [{"id": r.id, "received_at": r.received_at, **json.loads(r.payload)} for r in rows[:50]], "next_cursor": rows[49].id if len(rows) > 50 else None}
+            return {"items": [{"id": r.id, "received_at": r.received_at, **event_detail(r)} for r in rows[:50]], "next_cursor": rows[49].id if len(rows) > 50 else None}
 
     @app.get("/stats", dependencies=[Depends(viewer)])
     def stats():
@@ -178,6 +186,9 @@ def create_app(config=None):
                 if any(p.event_type == "audit.task_action" for p in proofs):
                     title = "Action exécutée hors autorisation"
                     explanation = "Aucune délégation valide ne couvre cette opération sur cette ressource au moment de son exécution."
+            elif row.rule == "R4":
+                title = "Connexion réussie hors planning"
+                explanation = "L’heure locale est en dehors des créneaux prévus. Signal de faible gravité."
             elif row.rule == "R2":
                 title = "Scan HTTP possible"
                 explanation = "Au moins 20 routes distinctes en 60 secondes, avec au moins 50 % de réponses 403 ou 404 pour cette IP et ce service."
@@ -185,7 +196,7 @@ def create_app(config=None):
                 title = "Échecs de connexion répétés"
                 explanation = "Au moins 5 échecs du même compte et de la même IP sur 5 minutes."
             return {**incident_json(row), "title": title, "explanation": explanation,
-                    "evidence": [json.loads(event.payload) for event in proofs]}
+                    "evidence": [event_detail(event) for event in proofs]}
 
     @app.post("/events/batch", status_code=202, dependencies=[Depends(collector_auth)])
     def ingest(batch: Batch):

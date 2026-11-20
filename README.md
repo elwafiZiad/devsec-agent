@@ -143,3 +143,15 @@ de connexion, consulter .local/ci.log.
 Pour un dépôt privé, le service peut utiliser DEVSEC_GITHUB_TOKEN (accès Actions
 en lecture sur le dépôt) ou la connexion Git déjà configurée pour ce dépôt.
 Le jeton et le journal brut ne sont pas enregistrés en base.
+
+## R4 — Horaires de connexion
+
+Le fichier devsec/schedules.json décrit les comptes fictifs et leur fuseau IANA.
+Les jours vont de 1 (lundi) à 7 (dimanche). Chaque créneau inclut son début et
+exclut sa fin. Une fin antérieure au début correspond au lendemain. Un compte
+listé dans service_accounts peut utiliser le planning du service si son propre
+planning est absent. Les autres comptes sans planning affichent « Horaire inconnu ».
+Le fichier peut être remplacé via schedule_file dans .local/config.json. Relancer
+les services après modification : le prototype réévalue l’historique avec la
+configuration active. Seuls les auth.success hors planning créent un incident
+de gravité faible, visible avec son fuseau et ses créneaux dans les preuves.

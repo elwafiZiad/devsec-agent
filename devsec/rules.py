@@ -155,7 +155,18 @@ def task_violations(events):
     return incidents
 
 
-def evaluate(sessions, maintenance=()):
+def missed_schedules(events, schedules):
+    results = []
+    for row in events:
+        data = json.loads(row.payload)
+        if schedules.assess(data)["status"] == "Hors planning":
+            results.append({"key": (row.service, data["environment"], data["user_id"], data["source_ip"]),
+                            "identity": (row.source, row.external_id), "severity": "low", "peak": 1,
+                            "evidence": {row.id: datetime.fromisoformat(row.event_time)}})
+    return results
+
+
+def evaluate(sessions, maintenance=(), schedules=None):
     # One worker only in this increment. The transaction reconciles late arrivals
     # and batch reordering; raw events are immutable and never deleted here.
     with sessions.begin() as db:
@@ -179,7 +190,13 @@ def evaluate(sessions, maintenance=()):
         tasks = select(Event).where(Event.event_type.in_(("audit.task_granted", "audit.task_action", "audit.role_change")))
         candidates.extend(task_violations(db.scalars(tasks.order_by(Event.event_time, Event.id))))
         reconcile(db, "R3", candidates, links)
-        return total + len(candidates)
+        total += len(candidates)
+        if schedules is not None:
+            successes = db.scalars(select(Event).where(Event.event_type == "auth.success"))
+            candidates = missed_schedules(successes, schedules)
+            reconcile(db, "R4", candidates, links)
+            total += len(candidates)
+        return total
 
 
 def reconcile(db, rule, candidates, links):
@@ -195,6 +212,7 @@ def reconcile(db, rule, candidates, links):
         start, end = min(stamps).isoformat(), max(stamps).isoformat()
         unchanged = row.id is not None and links[row.id] == proof and row.peak_count == candidate['peak']
         row.service, row.environment, row.user_id, row.source_ip = key
+        row.severity = candidate.get("severity", "medium")
         row.started_at, row.last_event_at, row.peak_count = start, end, candidate['peak']
         if not unchanged:
             row.updated_at = utcnow()
@@ -215,13 +233,15 @@ def reconcile(db, rule, candidates, links):
 def main():
     logging.basicConfig(level=logging.INFO)
     from .schemas import MaintenanceWindow
+    from .schedules import Schedules
     config = settings()
+    schedules = Schedules(config)
     maintenance = [MaintenanceWindow.model_validate(w) for w in config.get("maintenance_windows", [])]
     engine, sessions = database(config["database_url"])
     try:
         while True:
             try:
-                evaluate(sessions, maintenance)
+                evaluate(sessions, maintenance, schedules)
             except Exception:
                 logging.exception('Règles : évaluation interrompue, reprise au prochain cycle')
             time.sleep(2)

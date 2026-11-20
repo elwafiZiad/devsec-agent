@@ -14,3 +14,19 @@ document.getElementById('simulate-r3').onclick = async function () {
         this.disabled = false;
     }
 };
+
+document.getElementById('simulate-r4').onclick = async function () {
+    this.disabled = true;
+    const result = document.getElementById('r4-result');
+    try {
+        const account = document.getElementById('r4-account').value;
+        const response = await fetch('/simulation/horaire?account='+encodeURIComponent(account), {method:'POST'});
+        if (!response.ok) throw Error();
+        const event = await response.json();
+        result.textContent = 'Connexion simulée pour ' + account + ' · événement ' + event.event_id;
+    } catch {
+        result.textContent = 'Simulation indisponible.';
+    } finally {
+        this.disabled = false;
+    }
+};

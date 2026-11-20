@@ -35,10 +35,11 @@ def main():
         [sys.executable, "-m", "uvicorn", "devsec.demo:create_demo", "--factory", "--host", "127.0.0.1", "--port", "8011", "--no-access-log", "--no-proxy-headers"],
         [sys.executable, "-m", "devsec.collector"],
         [sys.executable, "-m", "devsec.rules"],
+        [sys.executable, "-m", "devsec.ci"],
     ]
     children, streams = [], []
     try:
-        for name, command in zip(["api", "demo", "collector", "rules"], commands):
+        for name, command in zip(["api", "demo", "collector", "rules", "ci"], commands):
             stream = (LOCAL / f"{name}.log").open("a", encoding="utf-8")
             streams.append(stream)
             children.append(subprocess.Popen(command, cwd=ROOT, env=env, stdout=stream, stderr=stream))

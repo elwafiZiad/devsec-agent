@@ -7,7 +7,7 @@ async function get(url){const r=await fetch(url);if(r.status===401){location.hre
 function cell(row,text){const c=document.createElement('td');c.textContent=text;row.appendChild(c);return c;}
 async function refresh(){if(busy)return;busy=true;try{
  const params=new URLSearchParams();if($('filter').value)params.set('event_type',$('filter').value);if(selectedIp)params.set('source_ip',selectedIp);if(before)params.set('before',before);
- const [data,s,inc]=await Promise.all([get('/events?'+params),get('/stats'),get('/incidents'+(incidentBefore?'?before='+incidentBefore:''))]); renderIncidents(inc,s.incidents);
+ const [data,s,inc,ci]=await Promise.all([get('/events?'+params),get('/stats'),get('/incidents'+(incidentBefore?'?before='+incidentBefore:'')),get('/ci/incidents')]); renderCI(ci.items); renderIncidents(inc,s.incidents);
  $('total').textContent=s.total;$('failures').textContent=s.failures;$('successes').textContent=s.successes;$('storage').textContent=s.storage==='postgresql'?'PostgreSQL':'SQLite · local';
  const c=s.collector, active=c&&(Date.now()-Date.parse(c.last_seen_at))<15000;
  $('connection').textContent=active?'● Collecteur actif':'○ Collecteur en attente';
@@ -32,3 +32,25 @@ function renderIncidents(data,total){
  incidentNext=data.next_cursor;$('incidents-older').hidden=!incidentNext;$('incidents-latest').hidden=!incidentBefore;
 }
 $('incidents-older').onclick=()=>{incidentBefore=incidentNext;refresh();};$('incidents-latest').onclick=()=>{incidentBefore=null;refresh();};
+
+function renderCI(items) {
+ const list = $('ci-list');
+ list.replaceChildren();
+ if (!items.length) list.textContent = 'Aucun échec CI importé.';
+ for (const item of items) {
+   const article = document.createElement('article');
+   const title = document.createElement('strong');
+   title.textContent = item.test || item.step;
+   const meta = document.createElement('p');
+   meta.textContent = [item.repo, item.branch, item.sha, item.job, item.step].join(' · ');
+   const proof = document.createElement('pre');
+   proof.textContent = item.evidence;
+   const link = document.createElement('a');
+   link.href = item.url;
+   link.textContent = 'Voir la tentative sur GitHub';
+   link.target = '_blank';
+   link.rel = 'noopener';
+   article.append(title, meta, proof, link);
+   list.appendChild(article);
+ }
+}

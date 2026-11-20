@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, Column, String, Integer, Text, UniqueConstraint, ForeignKey, event
+from sqlalchemy import BigInteger, create_engine, Column, String, Integer, Text, UniqueConstraint, ForeignKey, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
@@ -21,6 +21,20 @@ class Event(Base):
     service = Column(String(64), nullable=False)
     payload = Column(Text, nullable=False)
     __table_args__ = (UniqueConstraint("source", "external_id", name="uq_source_event"),)
+
+
+class CIIncident(Base):
+    __tablename__ = "ci_incidents"
+    run_id = Column(BigInteger, primary_key=True)
+    attempt = Column(Integer, primary_key=True)
+    repo = Column(Text, nullable=False)
+    branch = Column(Text, nullable=False)
+    sha = Column(String(64), nullable=False)
+    job = Column(Text, nullable=False)
+    step = Column(Text, nullable=False)
+    test = Column(Text, nullable=False)
+    evidence = Column(Text, nullable=False)
+    updated = Column(String(40), nullable=False)
 
 
 class LoginSession(Base):

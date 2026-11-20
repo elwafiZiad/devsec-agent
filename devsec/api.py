@@ -13,7 +13,7 @@ from pydantic import IPvAnyAddress, ValidationError
 from sqlalchemy import select, func, text, delete, cast, type_coerce, JSON
 from sqlalchemy.exc import IntegrityError
 from .config import settings, password_hash
-from .database import database, Event, LoginSession, CollectorStatus, LoginAttempt, Incident, IncidentEvidence, utcnow
+from .database import CIIncident, database, Event, LoginSession, CollectorStatus, LoginAttempt, Incident, IncidentEvidence, utcnow
 from .schemas import Batch, AuthEvent, event_adapter, Heartbeat
 
 HERE = Path(__file__).parent
@@ -144,6 +144,14 @@ def create_app(config=None):
             row = db.get(CollectorStatus, "demo-auth")
             return {"total": total, "failures": failures, "successes": successes, "incidents": db.scalar(select(func.count()).select_from(Incident)), "storage": engine.dialect.name,
                     "collector": {"last_seen_at": row.last_seen_at, "pending": row.pending, "quarantined": row.quarantined} if row else None}
+
+    @app.get("/ci/incidents", dependencies=[Depends(viewer)])
+    def ci_incidents():
+        with sessions() as db:
+            rows = db.scalars(select(CIIncident).order_by(CIIncident.updated.desc()).limit(50))
+            return {"items": [{**{c.name: getattr(row, c.name) for c in CIIncident.__table__.columns},
+                               "url": f"https://github.com/{row.repo}/actions/runs/{row.run_id}/attempts/{row.attempt}"}
+                              for row in rows]}
 
     def incident_json(row):
         return {column.name: getattr(row, column.name) for column in Incident.__table__.columns}

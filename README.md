@@ -129,3 +129,17 @@ Le moteur rapproche compte, service, environnement, opération et ressource au m
 de l’action. L’échéance est exclue. Une nouvelle délégation remplace la précédente
 pour le compte sur ce service. Une rétrogradation révoque la délégation.
 Les anciens événements de rôle et de maintenance gardent leur interprétation historique.
+
+## Incidents CI
+
+Le service devsec.ci consulte le workflow tests.yml de elwafiZiad/devsec-agent
+toutes les 60 secondes. Il consulte les 30 échecs les plus récents et importe
+une fiche par exécution et tentative. La fiche présente le premier job en échec,
+son étape et le premier test identifié dans le résumé pytest. Le lien GitHub
+permet de consulter le journal complet. Un échec hors pytest affiche l’étape.
+Le tableau de bord local affiche les 50 dernières fiches. En cas de problème
+de connexion, consulter .local/ci.log.
+
+Pour un dépôt privé, le service peut utiliser DEVSEC_GITHUB_TOKEN (accès Actions
+en lecture sur le dépôt) ou la connexion Git déjà configurée pour ce dépôt.
+Le jeton et le journal brut ne sont pas enregistrés en base.
